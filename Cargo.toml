@@ -1,0 +1,47 @@
+[package]
+name = "container-flow"
+edition = "2021"
+authors = ["Alexis Bekhdadi <alexis@bekhdadi.com>"]
+license = "Apache-2.0"
+description = "A versatile client for container APIs (Docker/Podman) with both async and sync support. Same API across all transport layers (HTTP(S), Unix socket, Windows named pipeline and SSH). "
+repository = "https://github.com/midoriiro/container-flow"
+documentation = ""
+keywords = ["docker", "podman", "container", "api", "client"]
+version = "0.1.0"
+build = "build.rs"
+
+[build-dependencies]
+ast-shaper = { path = "../ast-shaper" }
+syn = "2.0"
+itertools = "0.14"
+serde_yaml = "0.9.33"
+openapiv3-extended = { version = "6.0", features = ["v2"] }
+tempfile = "3.16"
+
+[dependencies]
+bollard = { version = "0.18", features = ["buildkit"] }
+futures = "0.3"
+tar = "0.4"
+flate2 = "1.0"
+bytes = "1.9"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+libc = "0.2"
+rstest = "0.24"
+ctor = "0.2"
+http = "1.2"
+serde_urlencoded = "0.7"
+hex = "0.4"
+ureq = "3.0"
+
+serde = { version = "^1.0", features = ["derive"] }
+serde_with = { version = "^3.8", default-features = false, features = ["base64", "std", "macros"] }
+serde_json = "^1.0"
+serde_repr = "^0.1"
+url = "^2.5"
+uuid = { version = "^1.8", features = ["serde", "v4"] }
+reqwest = { version = "^0.12", features = ["json", "blocking", "multipart"] }
+
+[features]
+default = ["v1_47_0"]
+v1_47_0 = []
