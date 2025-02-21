@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use reqwest::blocking::ClientBuilder;
-use crate::api::internals::api_sync::{ConfigApi, ContainerApi, DistributionApi, ExecApi, ImageApi, NetworkApi, NodeApi, PluginApi, SecretApi, ServiceApi, SessionApi, SwarmApi, SystemApi, TaskApi, VolumeApi};
 use crate::api::internals::api_sync::Configuration;
+use crate::api::internals::api_sync::{ConfigApi, ContainerApi, DistributionApi, ExecApi, ImageApi, NetworkApi, NodeApi, PluginApi, SecretApi, ServiceApi, SessionApi, SwarmApi, SystemApi, TaskApi, VolumeApi};
+use reqwest::blocking::ClientBuilder;
+use std::sync::Arc;
 
 pub struct ContainerClientBuilder {
     base_path: Option<String>,

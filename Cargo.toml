@@ -3,7 +3,7 @@ name = "container-flow"
 edition = "2021"
 authors = ["Alexis Bekhdadi <alexis@bekhdadi.com>"]
 license = "Apache-2.0"
-description = "A versatile client for container APIs (Docker/Podman) with both async and sync support. Same API across all transport layers (HTTP(S), Unix socket, Windows named pipeline and SSH). "
+description = "A versatile client for container APIs (Docker/Podman) with both async and sync support. Same API across all transport layers (HTTP(S), Unix socket, Windows named pipeline and SSH)."
 repository = "https://github.com/midoriiro/container-flow"
 documentation = ""
 keywords = ["docker", "podman", "container", "api", "client"]
@@ -12,6 +12,7 @@ build = "build.rs"
 
 [build-dependencies]
 ast-shaper = { path = "../ast-shaper" }
+buildify = { path = "../buildify" }
 syn = "2.0"
 itertools = "0.14"
 serde_yaml = "0.9.33"

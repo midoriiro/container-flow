@@ -1,9 +1,14 @@
-use crate::build_modules::builder_generator::BuilderGenerator;
-use crate::build_modules::items::{Item, ItemTrait, ModuleItems, SourceFile};
-use crate::build_modules::utils::{create_use, create_use_as_glob, generate_source_code, path::Path};
+use crate::build_modules::api_generator::ApiGenerator;
+use crate::build_modules::configuration_transformer::ConfigurationTransformer;
+use ast_shaper::debug;
+use ast_shaper::items::item::{Item, ItemTrait};
+use ast_shaper::items::module_item::ModuleItem;
+use ast_shaper::items::source_file::SourceFile;
+use ast_shaper::utils::parsing::PathExt;
+use ast_shaper::utils::path::Path;
+use ast_shaper::utils::{create_use, create_use_as_glob};
 use itertools::Itertools;
 use openapiv3::v2::{Operation, Parameter, ReferenceOrSchema};
-use pipewire_common::debug;
 use serde_yaml;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,15 +17,11 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::process::{Command, Stdio};
 use std::rc::Rc;
-use syn::{Field, Fields, FieldsNamed, Token};
-use syn::punctuated::Punctuated;
 use tempfile::NamedTempFile;
-use crate::build_modules::api_generator::ApiGenerator;
-use crate::build_modules::configuration_transformer::ConfigurationTransformer;
 
 mod build_modules;
 
-fn main() {    
+fn main() {
     let tool_path = std::path::Path::new("resources")
         .join("tools")
         .join("openapi-generator");
@@ -35,20 +36,20 @@ fn main() {
         client_version(),
         false
     );
-    let mut model_source_file = merge_model_source_files(&sync_client_cargo_path);
-    generate_source_code(&mut model_source_file, &output_path, "models.rs");
+    let model_source_file = merge_model_source_files(&sync_client_cargo_path);
+    output_path.join("models.rs").unparse(&model_source_file);
     let mut api_source_file = merge_api_source_files(&sync_client_cargo_path);
-    generate_source_code(&mut api_source_file, &output_path, "api-sync.rs");
-    let mut params_source_file = extract_params_structs(&mut api_source_file);
-    generate_source_code(&mut params_source_file, &output_path, "params.rs");
-    let mut builders_source_file = create_params_builders(&model_source_file, &params_source_file);
-    generate_source_code(&mut builders_source_file, &output_path, "builders.rs");
+    output_path.join("api-sync.rs").unparse(&api_source_file);
+    let params_source_file = extract_params_structs(&mut api_source_file);
+    output_path.join("params.rs").unparse(&params_source_file);
+    let builders_source_file = create_params_builders(&model_source_file, &params_source_file);
+    output_path.join("builders.rs").unparse(&builders_source_file);;
 }
 
 fn output_directory() -> std::path::PathBuf {
-    let output_direction = std::env::var("OUT_DIR")
+    let output_directory = std::env::var("OUT_DIR")
         .expect("OUT_DIR not set");
-    std::path::Path::new(&output_direction).to_path_buf()
+    std::path::Path::new(&output_directory).to_path_buf()
 }
 
 fn client_version() -> &'static str {
@@ -240,12 +241,12 @@ fn merge_model_source_files(cargo_path: &std::path::Path) -> SourceFile {
     let module_path = cargo_path
         .join("src")
         .join("models");
-    let source_files = get_source_files(&module_path);
+    let source_files = module_path.walk();
     let mut source_file = merge_source_files(&source_files);
     let path_prefix = Path::new("crate").join("models").clone();
     source_file.remove_use_items_starting_with(&path_prefix);
     let path_prefix = Path::new("models");
-    source_file.trim_path_prefix_in_items(&path_prefix);
+    ast_shaper::functions::trim_path::from_source_file(&mut source_file, &path_prefix);
     source_file
 }
 
@@ -255,17 +256,17 @@ fn merge_api_source_files(cargo_path: &std::path::Path) -> SourceFile {
         .join("apis");
     let api_generator = ApiGenerator::new();
     let configuration_transformer = ConfigurationTransformer::new();
-    let mut source_files = get_source_files(&module_path);
+    let mut source_files = module_path.walk();
     for source_file in source_files.iter_mut() {
         let path_prefix = Path::new("crate");
         source_file.remove_use_items_starting_with(&path_prefix);
         let path_prefix = Path::new("super");
         source_file.remove_use_items_starting_with(&path_prefix);
         let path_prefix = Path::new("configuration");
-        source_file.trim_path_prefix_in_items(&path_prefix);
+        ast_shaper::functions::trim_path::from_source_file(source_file, &path_prefix);
         let path_prefix = Path::new("crate").join("apis").clone();
-        source_file.trim_path_prefix_in_function_body(&path_prefix);
-        let module = source_file.modules_mut().first_mut().unwrap();
+        ast_shaper::functions::trim_path::from_source_file(source_file, &path_prefix);
+        let module = source_file.modules.first_mut().unwrap();
         module.push_use_item(create_use(Path::new("crate").join("models")));
         module.push_use_item(create_use(Path::new("bytes").join("Bytes")));
         module.push_use_item(create_use(Path::new("std").join("sync").join("Arc")));
@@ -276,7 +277,7 @@ fn merge_api_source_files(cargo_path: &std::path::Path) -> SourceFile {
             continue;
         }
         let api_struct = api_generator.generate(module);
-        module.push_struct_items(api_struct);
+        module.push_struct_item(api_struct);
     }
     let source_file = merge_source_files(&source_files);
     source_file
@@ -285,10 +286,10 @@ fn merge_api_source_files(cargo_path: &std::path::Path) -> SourceFile {
 fn merge_source_files(source_files: &Vec<SourceFile>) -> SourceFile {
     let mut output_file = SourceFile::new(
         source_files.iter()
-            .flat_map(|source_file| source_file.attributes().clone())
+            .flat_map(|source_file| source_file.attributes.clone())
             .collect(),
         source_files.iter()
-            .flat_map(|source_file| source_file.modules().clone())
+            .flat_map(|source_file| source_file.modules.clone())
             .sorted_by(|a, b| {
                 let a = a.name();
                 let b = b.name();
@@ -300,64 +301,8 @@ fn merge_source_files(source_files: &Vec<SourceFile>) -> SourceFile {
     output_file
 }
 
-fn get_source_files(module_path: &std::path::Path) -> Vec<SourceFile> {
-    debug!("Merging module source file(s) at {}", module_path.to_str().unwrap());
-    let mut source_files = HashMap::new();
-    walk_path(&module_path, &mut source_files);
-    debug!("Merging {} source file(s)", source_files.len());
-    let mut output_files: HashMap<String, SourceFile> = HashMap::new();
-    for (file_name, mut source_file) in source_files {
-        if output_files.contains_key(&file_name) == false {
-            let module = ModuleItems::new(file_name.clone().as_str());
-            let output_file = SourceFile::new(source_file.attrs, vec![module]);
-            output_files.insert(file_name.clone(), output_file);
-        }
-        let mut module = output_files.get_mut(&file_name)
-            .unwrap()
-            .modules_mut()
-            .first_mut()
-            .unwrap();
-        for item in source_file.items {
-            match item {
-                syn::Item::ExternCrate(value) => {
-                    module.push_extern_crate_item(value);
-                }
-                syn::Item::Mod(value) => {
-                    if value.content.is_some() {
-                        panic!("Module block not supported");
-                    }
-                    else {
-                        // Ignoring module statement (e.g. mod my_module;)
-                    }
-                }
-                syn::Item::Use(value) => {
-                    module.push_use_item(value);
-                }
-                syn::Item::Struct(value) => {
-                    module.push_struct(value);
-                },
-                syn::Item::Enum(value) => {
-                    module.push_enum(value);
-                }
-                syn::Item::Impl(value) => {
-                    module.push_impl_to_struct(&value);
-                    module.push_impl_to_enum(&value);
-                }
-                syn::Item::Fn(value) => {
-                    module.push_global_function(value);
-                }
-                _ => module.push_item(item),
-            }
-        }
-    }
-    let output_files = output_files.iter()
-        .map(|(_, source_file)| source_file.clone())
-        .collect::<Vec<_>>();
-    output_files
-}
-
 fn extract_params_structs(source_file: &mut SourceFile) -> SourceFile {
-    let params_structs = source_file.modules_mut().iter_mut()
+    let params_structs = source_file.modules.iter_mut()
         .filter_map(|module| {
             let items = module.take_items_by(
                 |item| item.ident().ends_with("Params")
@@ -376,7 +321,7 @@ fn extract_params_structs(source_file: &mut SourceFile) -> SourceFile {
             a.cmp(&b)
         })
         .collect::<Vec<_>>();
-    let mut module = ModuleItems::new("params");
+    let mut module = ModuleItem::new("params");
     module.push_use_item(create_use(Path::new("crate").join("models")));
     module.push_use_item(create_use(Path::new("bytes").join("Bytes")));
     for item in params_structs {
@@ -384,7 +329,7 @@ fn extract_params_structs(source_file: &mut SourceFile) -> SourceFile {
             Item::Struct(value) => value,
             _ => panic!("Expected struct item")
         };
-        module.push_struct_items(struct_item);
+        module.push_struct_item(struct_item);
     }
     SourceFile::new(
         vec![],
@@ -394,41 +339,41 @@ fn extract_params_structs(source_file: &mut SourceFile) -> SourceFile {
 
 fn create_params_builders(model_source_file: &SourceFile, params_source_file: &SourceFile) -> SourceFile {
     let mut modules = Vec::new();
-    modules.append(&mut model_source_file.modules().clone());
-    modules.append(&mut params_source_file.modules().clone());
+    modules.append(&mut model_source_file.modules.clone());
+    modules.append(&mut params_source_file.modules.clone());
     let modules = Rc::new(RefCell::new(modules));
-    let mut builder = BuilderGenerator::new(modules.clone());
+    let mut builder = buildify::BuilderGenerator::new(modules.clone());
     builder.with_rule()
         .for_all()
         .and_all_fields()
         .then_discard_attribute("serde");
     builder.with_rule()
         .for_item("ContainerCreateRequest")
-        .with_field("exposed_ports")
-        .then_remap_to_vec(Path::from("ExposedPort"));
+        .with_field_ident("exposed_ports")
+        .then_map_to_vec(Path::from("ExposedPort"));
     builder.with_rule()
         .for_item("ContainerConfig")
-        .with_field("exposed_ports")
-        .then_remap_to_vec(Path::from("ExposedPort"));
+        .with_field_ident("exposed_ports")
+        .then_map_to_vec(Path::from("ExposedPort"));
     builder.with_rule()
         .for_item("ContainerCreateRequest")
-        .with_field("volumes")
-        .then_remap_to_vec(Path::new("PathBuf"));
+        .with_field_ident("volumes")
+        .then_map_to_vec(Path::new("PathBuf"));
     builder.with_rule()
         .for_item("ContainerConfig")
-        .with_field("volumes")
-        .then_remap_to_vec(Path::new("PathBuf"));
+        .with_field_ident("volumes")
+        .then_map_to_vec(Path::new("PathBuf"));
     builder.with_rule()
         .for_item("ServiceSpecMode")
-        .with_field("global")
+        .with_field_ident("global")
         .then_map(Path::new("String"));
     builder.with_rule()
         .for_item("ServiceSpecMode")
-        .with_field("global_job")
+        .with_field_ident("global_job")
         .then_map(Path::new("String"));
     builder.with_rule()
         .for_item("ClusterVolumeSpecAccessMode")
-        .with_field("mount_volume")
+        .with_field_ident("mount_volume")
         .then_map(Path::new("String"));
     let borrowed_modules = modules.borrow();
     let params_structs = borrowed_modules.iter()
@@ -450,7 +395,7 @@ fn create_params_builders(model_source_file: &SourceFile, params_source_file: &S
             a.cmp(&b)
         })
         .collect::<Vec<_>>();
-    let mut module_builders = ModuleItems::new("builders");
+    let mut module_builders = ModuleItem::new("builders");
     module_builders.push_use_item(create_use_as_glob(Path::new("crate").join("models")));
     module_builders.push_use_item(create_use_as_glob(Path::new("crate").join("params")));
     module_builders.push_use_item(create_use(Path::new("bytes").join("Bytes")));
@@ -460,12 +405,12 @@ fn create_params_builders(model_source_file: &SourceFile, params_source_file: &S
         .flat_map(|item| {
             match item {
                 Item::Struct(value) => {
-                    builder.generate(&syn::Item::Struct(value.item().clone()))
+                    builder.generate(&syn::Item::Struct(value.item.clone()))
                 }
                 _ => panic!("Unexpected type !")
             }
         })
         .unique_by(|item| item.ident())
-        .for_each(|item| module_builders.push_struct_items(item));
+        .for_each(|item| module_builders.push_struct_item(item));
     SourceFile::new(vec![], vec![module_builders])
 }

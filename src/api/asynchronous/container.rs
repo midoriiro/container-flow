@@ -1,15 +1,15 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::api::options::{CreateContainerOptionsBuilder, StopContainerOptionsBuilder};
 use bollard::container::{ListContainersOptions, LogOutput, RestartContainerOptions, UploadToContainerOptions};
-use bollard::Docker;
 use bollard::errors::Error;
 use bollard::exec::{CreateExecOptions, StartExecOptions, StartExecResults};
 use bollard::models::{ContainerInspectResponse, ContainerState, ContainerSummary, Health, HealthStatusEnum};
+use bollard::Docker;
 use bytes::Bytes;
 use futures::StreamExt;
-use tokio::runtime::Runtime;
 use pipewire_common::utils::Backoff;
-use crate::api::options::{CreateContainerOptionsBuilder, StopContainerOptionsBuilder};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::runtime::Runtime;
 
 pub struct ContainerApi {
     runtime: Arc<Runtime>,

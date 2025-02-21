@@ -1,8 +1,8 @@
 use bollard::container::{Config, StopContainerOptions};
-use bollard::models::{HealthConfig, HostConfig, Mount, MountBindOptions, MountTypeEnum, ResourcesUlimits};
+use bollard::models::{HealthConfig, HostConfig};
+use pipewire_common::utils::Size;
 use std::collections::HashMap;
 use std::time::Duration;
-use pipewire_common::utils::Size;
 
 pub struct CreateContainerOptionsBuilder {
     image: Option<String>,

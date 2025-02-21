@@ -1,20 +1,20 @@
-use std::{fs, io};
+use bollard::errors::Error;
+use bollard::image::{BuildImageOptions, BuilderVersion};
+use bollard::models::ImageInspect;
+use bollard::Docker;
+use bytes::Bytes;
+use futures::StreamExt;
+use pipewire_common::utils::HexSlice;
+use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use bollard::Docker;
-use bollard::errors::Error;
-use bollard::image::{BuildImageOptions, BuilderVersion};
-use bollard::models::ImageInspect;
-use bytes::Bytes;
-use futures::StreamExt;
-use sha2::{Digest, Sha256};
+use std::{fs, io};
 use tar::{Builder, Header};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use pipewire_common::utils::HexSlice;
 
 struct ImageContext;
 

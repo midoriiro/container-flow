@@ -1,14 +1,16 @@
 use std::collections::HashMap;
-use crate::build_modules::items::{FnItem, Item, ItemTrait, ModuleItems, StructItems};
-use crate::build_modules::utils::expr::StatementWalker;
-use crate::build_modules::utils::path::Path;
-use crate::build_modules::utils::punctuated::PunctuatedExt;
-use crate::build_modules::utils::statement::{Expr, Statement};
-use crate::build_modules::utils::{create_ident, to_pascal_case};
 use itertools::Itertools;
 use syn::punctuated::Punctuated;
 use syn::{Block, ExprPath, FieldMutability, Fields, FieldsNamed, FnArg, Ident, ImplItem, ImplItemFn, ItemImpl, ItemStruct, Pat, PatType, Receiver, ReturnType, Signature, Type, TypePath, TypeReference, Visibility};
-use crate::build_modules::builder_generator::Field;
+use ast_shaper::items::fn_item::FnItem;
+use ast_shaper::items::item::{Item, ItemTrait};
+use ast_shaper::items::module_item::ModuleItem;
+use ast_shaper::items::struct_item::StructItem;
+use ast_shaper::utils::create_ident;
+use ast_shaper::utils::name_conventions::NamingConventions;
+use ast_shaper::utils::path::Path;
+use ast_shaper::utils::punctuated::PunctuatedExt;
+use ast_shaper::utils::statement::{Expr, Statement};
 
 pub struct ApiGenerator;
 
@@ -17,7 +19,7 @@ impl ApiGenerator {
         Self
     }
 
-    pub fn generate(&self, module: &mut ModuleItems) -> StructItems {
+    pub fn generate(&self, module: &mut ModuleItem) -> StructItem {
         let file_name = module.file_name().clone();
         let file_name = file_name.replace("_api", "");
         let mut items = module.take_items_by(|item| {
@@ -32,17 +34,17 @@ impl ApiGenerator {
                     Item::Fn(value) => {
                         let ident = value.ident();
                         let ident = ident.replace(&format!("{}_", file_name), "");
-                        value.rename_ident(&ident);
+                        value.item.signature_mut().ident = create_ident(&ident);
                         value.clone()
                     },
                     _ => panic!("Expected function item")
                 }
             })
             .collect::<Vec<_>>();
-        let ident = create_ident(format!("{}Api", to_pascal_case(&file_name)).as_str());
+        let ident = create_ident(format!("{}Api", NamingConventions::to_pascal_case(&file_name)).as_str());
         let item_struct = self.generate_struct_item(&ident);
         let struct_impl_item = self.generate_struct_impl_item(&ident, &items);
-        StructItems::new(
+        StructItem::new(
             item_struct,
             vec![struct_impl_item],
         )
@@ -182,7 +184,7 @@ impl ApiGenerator {
             }))
         });
         let mut block = item.block().clone();
-        Self::transform_function_body(&mut block, &field);
+        Self::transform_function_body(&mut block, field.clone());
         ImplItem::Fn(ImplItemFn {
             attrs: item.attributes().clone(),
             vis: item.visibility().clone(),
@@ -192,27 +194,28 @@ impl ApiGenerator {
         })
     }
 
-    fn transform_function_body(block: &mut Block, field: &Path) {
-        for statement in block.stmts.iter_mut() {
-            StatementWalker::walk(statement, &mut |expr| {
-                match expr {
-                    syn::Expr::Field(ref mut value) => {
-                        let base = match *value.base {
-                            syn::Expr::Path(ref value) => value.path.clone().into(),
-                            _ => panic!("Expected path expression")
-                        };
-                        if base != *field {
-                            return false;
-                        }
-                        value.base = Box::new(Expr::Stmt(Statement::access_field(
-                            Path::new("self"),
-                            base
-                        )).to_expr());
-                        true
+    fn transform_function_body(block: &mut Block, field: Path) {
+        let mut context = ast_shaper::functions::transform::create_context(move |expr| {
+            match expr {
+                syn::Expr::Field(value) => {
+                    let base = match *value.base {
+                        syn::Expr::Path(ref value) => value.path.clone().into(),
+                        _ => panic!("Expected path expression")
+                    };
+                    if base != field {
+                        return false;
                     }
-                    _ => false
+                    *value.base = Expr::Stmt(Statement::access_field(
+                        Path::new("self"),
+                        base
+                    )).to_expr();
+                    true
                 }
-            });
+                _ => false
+            }
+        });
+        for statement in block.stmts.iter_mut() {
+            ast_shaper::functions::transform::from_stmt(statement, &mut context);
         }
     }
 }
